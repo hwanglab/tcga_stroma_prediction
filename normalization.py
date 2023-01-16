@@ -2,7 +2,6 @@
 # Example
 # python normalization.py 'input directory' 'output file name' 'tile size' (default: 4096)
 # python normalization.py /home/svs/ reinhardStats.csv 4096
-python normalization.py /datasets/Gastric/STAD reinhardStats.csv 4096
 ###########################################################################################
 
 import os
@@ -17,7 +16,6 @@ from simple_mask import simple_mask
 
 
 def color_normalization(file_path, stride_):
-
     # read whole slide images
     wsi = openslide.OpenSlide(file_path)
     (lrWidth, lrHeight) = wsi.level_dimensions[0]
@@ -63,8 +61,7 @@ def color_normalization(file_path, stride_):
     return src_mu_lab_out,  src_sigma_lab_out
 
 
-if __name__ == "__main__":
-
+def main():
     # read input argument
     if len(sys.argv) != 3:
         print ("Usage: ", sys.argv[0], "<path to the WSI directory> <path to the output directory> <tile size>")
@@ -78,17 +75,20 @@ if __name__ == "__main__":
     data = {
       "slidename": [], "mu1": [], "mu2": [], "mu3": [], "sigma1": [], "sigma2": [], "sigma3": []
     }
-
     df = pd.DataFrame(data)
 
     # read whole slide image files
-    wsis = sorted(os.listdir(input_dir))
-    for img_name in tqdm(wsis):
+    whole_slide_images = sorted(os.listdir(input_dir))
+    for img_name in tqdm(whole_slide_images):
         slide_path = input_dir + img_name
-        src_mu_lab,  src_sigma_lab = color_normalization(slide_path, stride)
+        src_mu_lab,  src_sigma_lab = color_normalization(slide_path, int(stride))
         print(img_name, src_mu_lab,  src_sigma_lab)
         df.loc[len(df.index)] = [img_name, src_mu_lab[0], src_mu_lab[1], src_mu_lab[2],
                                  src_sigma_lab[0], src_sigma_lab[1], src_sigma_lab[2]]
 
     # save pandas dataframe
     df.to_csv(output_file, index=False)
+
+
+if __name__ == "__main__":
+    main()
