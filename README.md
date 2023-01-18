@@ -8,7 +8,10 @@ Steps to create masks from WSIs
 2. Move to "tcga_stroma_prediction" directory
 
 3. Run python
-- python generate_mask_from_WSIs.py with arguments
+- python normalization.py 'input directory' 'output file name' 'tile size'
+** Note that this will create a .csv file with mu and std statistics to be used as an input.
+- python generate_mask_from_WSIs.py 'input directory' 'output directory' 'model path' 'norm stats'
+** Use the .csv file for 'norm stats'
 
 4. Confirm the masks in 'your output directory'
 
@@ -18,17 +21,17 @@ Steps to create masks from WSIs
 python --version
 
 # create virtual environment
-virtualenv -p /usr/bin/python3.6 env
+virtualenv -p /usr/bin/python3.8 env
 
 # activate
 source env/bin/activate
 
-pip install tensorflow-gpu==2.5
-
-pip install large-image[all] --find-links https://girder.github.io/large_image_wheels
-
-pip install distributed==2021.3.0 scikit-image==0.17.2 scikit-learn==0.24.2 scipy==1.5.4
-
-pip install scipy==1.5.4
-
+# package versions
+numpy==1.19.5
+tensorflow-gpu==2.6.2
+scipy==1.4.1
+scikit-image==0.17.2
+scikit-learn==0.24.2
+pandas==1.1.5
+Pillow==8.4.0
 

@@ -16,7 +16,7 @@ from simple_mask import simple_mask
 
 
 def color_normalization(file_path, stride_):
-    # read whole slide images
+    # read whole slide images; openslide version; runnting time can be improved by DeepZoomGenerator
     wsi = openslide.OpenSlide(file_path)
     (lrWidth, lrHeight) = wsi.level_dimensions[0]
     array_x = np.arange(0, lrWidth + 1, stride_)
@@ -32,7 +32,7 @@ def color_normalization(file_path, stride_):
             tile = wsi.read_region((int(mesh_x[i, j]), int(mesh_y[i, j])), 0, (stride_, stride_))
             tile = np.asarray(tile)
             tile = tile[:, :, :3]
-            bn = np.sum(tile[:, :, 0] < 5) + np.sum(np.mean(tile,axis=2) > 250)
+            bn = np.sum(tile[:, :, 0] < 5) + np.sum(np.mean(tile,axis=2) > 250) # set to 250
             if (np.std(tile[:, :, 0]) + np.std(tile[:, :, 1]) + np.std(tile[:, :, 2])) / 3 > 18 \
                     and bn < stride_ * stride_ * 0.1:
                 im_fgnd_mask_lres = simple_mask(tile)
@@ -64,7 +64,7 @@ def color_normalization(file_path, stride_):
 def main():
     # read input argument
     if len(sys.argv) != 3:
-        print ("Usage: ", sys.argv[0], "<path to the WSI directory> <path to the output directory> <tile size>")
+        print ("Usage: ", sys.argv[0], "<path to the WSI directory> <path to the output file> <tile size>")
         exit(1)
 
     input_dir = sys.argv[1]
