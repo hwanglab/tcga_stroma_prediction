@@ -18,61 +18,95 @@ from PIL import Image
 import multiprocessing as mp
 from glob import glob
 
+global wsi
+global mesh_x, mesh_y
+global stride
+
+def thread_read(idx):
+    i,j = idx
+    global wsi
+    global mesh_x, mesh_y
+    global stride
+    
+    ppt_x = int(stride)
+    ppt_y = int(stride)
+    #print('before read')
+    tile = wsi.read_region((int(mesh_x[i, j]), int(mesh_y[i, j])), 0, (ppt_x, ppt_y))
+    #tile.save('test.png')
+    #exit()
+    #tile = Image.open('test.png')
+    sample_fraction = 0.01 # default sample fraction 0.01
+    tile = np.asarray(tile)
+    tile = tile[:, :, :3]
+    bn = np.sum(tile[:, :, 0] < 5) + np.sum(np.mean(tile,axis=2) > 250) # set to 250
+    if (np.std(tile[:, :, 0]) + np.std(tile[:, :, 1]) + np.std(tile[:, :, 2])) / 3 > 18 \
+            and bn < ppt_x * ppt_y * 0.1:
+        
+        try:
+            im_fgnd_mask_lres = simple_mask(tile)
+        except:
+            return -1
+        # generate linear indices of sample pixels in fgnd mask
+        nz_ind = np.nonzero(im_fgnd_mask_lres.flatten())[0]
+        # Handle fractions in the desired sample size by rounding up
+        # or down, weighted by the fractional amount.
+
+        float_samples = sample_fraction * nz_ind.size
+        num_samples = int(np.floor(float_samples))
+        num_samples += np.random.binomial(1, float_samples - num_samples)
+        sample_ind = np.random.choice(nz_ind, num_samples)
+        # convert rgb tile image to Nx3 array
+        tile_pix_rgb = np.reshape(tile, (-1, 3))
+        return tile_pix_rgb[sample_ind, :]
+
 def color_normalization(file_path, stride_):
+    global wsi
+    global mesh_x, mesh_y
+    global stride 
+    stride=stride_
     # read whole slide images; openslide version; runnting time can be improved by DeepZoomGenerator
 
 
     wsi = openslide.OpenSlide(file_path)
     #wsi.get_thumbnail(wsi.level_dimensions[-1]).save(file_path.replace(file_path[-5:].split('.')[-1],'png')) #save thumbnail
 
-
-    #ppt_x = int(stride_ / float(wsi.properties[openslide.PROPERTY_NAME_MPP_X]))
-    #ppt_y = int(stride_ / float(wsi.properties[openslide.PROPERTY_NAME_MPP_Y]))
     (lrWidth, lrHeight) = wsi.level_dimensions[0]
-    #array_x = np.arange(0, lrWidth + 1, stride_)
-    #array_y = np.arange(0, lrHeight + 1, stride_)
-    ppt_x= int(stride_ )
-    ppt_y=int(stride_)
-    array_x = np.arange(0, lrWidth + 1, ppt_x)
-    array_y = np.arange(0, lrHeight + 1, ppt_y)
+
+    # ppt_x = int(stride_ / float(wsi.properties[openslide.PROPERTY_NAME_MPP_X]))
+    # ppt_y = int(stride_ / float(wsi.properties[openslide.PROPERTY_NAME_MPP_Y]))
+    # array_x = np.arange(0, lrWidth + 1, ppt_x)
+    # array_y = np.arange(0, lrHeight + 1, ppt_y)
+    # ppt_x = int(stride_)
+    # ppt_y = int(stride_)
+    array_x = np.arange(0, lrWidth + 1, stride_)
+    array_y = np.arange(0, lrHeight + 1, stride_)
+
     mesh_x, mesh_y = np.meshgrid(array_x, array_y)
 
     # find sample pixels and perform a color normalization
-    sample_fraction = 0.01 # default sample fraction 0.01
+    
     sample_pixels = []
     #print(file_path)
     cnt=0
+    indices =[]
     for i in range(mesh_x.shape[0] - 1):
         for j in range(mesh_x.shape[1] - 1):
-            #print('before read')
-            tile = wsi.read_region((int(mesh_x[i, j]), int(mesh_y[i, j])), 0, (ppt_x, ppt_y))
-            #tile.save('test.png')
-            #exit()
-            #tile = Image.open('test.png')
-            tile = np.asarray(tile)
-            tile = tile[:, :, :3]
-            bn = np.sum(tile[:, :, 0] < 5) + np.sum(np.mean(tile,axis=2) > 250) # set to 250
-            if (np.std(tile[:, :, 0]) + np.std(tile[:, :, 1]) + np.std(tile[:, :, 2])) / 3 > 18 \
-                    and bn < ppt_x * ppt_y * 0.1:
-                #print('mask',cnt)
-                cnt+=1
-                try:
-                    im_fgnd_mask_lres = simple_mask(tile)
-                except: 
-                    continue
-                # generate linear indices of sample pixels in fgnd mask
-                nz_ind = np.nonzero(im_fgnd_mask_lres.flatten())[0]
-                # Handle fractions in the desired sample size by rounding up
-                # or down, weighted by the fractional amount.
-                float_samples = sample_fraction * nz_ind.size
-                num_samples = int(np.floor(float_samples))
-                num_samples += np.random.binomial(1, float_samples - num_samples)
-                sample_ind = np.random.choice(nz_ind, num_samples)
-                # convert rgb tile image to Nx3 array
-                tile_pix_rgb = np.reshape(tile, (-1, 3))
-                # add rgb triplet of sample pixels
-                sample_pixels.append(tile_pix_rgb[sample_ind, :])
+            indices.append([i,j])
 
+
+    with mp.pool.Pool() as pool:
+        result = pool.map_async(thread_read, indices)
+        result.wait()
+        pool.close()
+        pool.join()
+        for i, it in enumerate(result.get()):
+            if isinstance(it,np.ndarray):
+                # add rgb triplet of sample pixels
+                sample_pixels.append(it)    #sample_pixels.append(tile_pix_rgb[sample_ind, :])
+
+
+                
+                
     sample_pixel = np.concatenate(sample_pixels, 0)
     # reshape the Nx3 pixel array into a 1 x N x 3 image for lab_mean_std
     sample_pixels_rgb = np.reshape(sample_pixel,
@@ -140,20 +174,5 @@ MSG: (need at least one array to concatenate)
 '''
 if __name__ == "__main__":
     whole_slide_images = sorted(glob("/home/m264377/Downloads/new/Stomach_Cancer_Stage4_Immunotherapy/*.svs"))
-    num_mp = mp.cpu_count()
-    num_split_slides = int(len(whole_slide_images) / num_mp)
-    splited_list = list()
-    start_idx = 0
-    processes = []
-    for i in range(num_mp):
-        if i == num_mp-1:
-            p = mp.Process(target=main, args=(whole_slide_images[start_idx:],))
-            p.start()
-            processes.append(p)
-        else:
-            p = mp.Process(target=main, args=(whole_slide_images[start_idx: start_idx + num_split_slides],))
-            p.start()
-            processes.append(p)
-            start_idx += num_split_slides
-    for process in processes:
-        process.join()
+
+    main(whole_slide_images)

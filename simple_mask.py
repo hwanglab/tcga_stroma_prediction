@@ -64,7 +64,7 @@ def simple_mask(im_rgb, bandwidth=2, bgnd_std=2.5, tissue_std=30,
     # convert image to grayscale, flatten and sample
     im_rgb = 255 * color.rgb2gray(im_rgb)
     im_rgb = im_rgb.astype(np.uint8)
-    num_samples = np.int(fraction * im_rgb.size)
+    num_samples = np.int32(fraction * im_rgb.size)
     sI = np.random.choice(im_rgb.flatten(), num_samples)[:, np.newaxis]
 
     # kernel-density smoothed histogram
@@ -118,7 +118,7 @@ def simple_mask(im_rgb, bandwidth=2, bgnd_std=2.5, tissue_std=30,
 
     # fit Gaussian mixture model and unpack results
     Parameters = fmin_slsqp(gaussian_residuals,
-                            [BGPeak, TissuePeak, BGScale, TissueScale, Mix],
+                            np.array([BGPeak, TissuePeak, BGScale, TissueScale, Mix], dtype=object),
                             args=(yHist, xHist),
                             bounds=[(0, 255), (0, 255),
                                     (np.spacing(1), 10),
